@@ -1,0 +1,62 @@
+tihogallery.py
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.utils import executor
+
+TOKEN = "Т8158525377:AAGDiBQp3CoPUl4Bp0_CNlkITibmdpDbp5k"
+ADMIN_ID = 246211279  # Telegram ID администратора галереи
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher(bot)
+
+# Главное меню (Reply-кнопки)
+main_keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+main_keyboard.add(KeyboardButton("🎨 Перейти на сайт"))
+main_keyboard.add(KeyboardButton("📅 Бронирование"), KeyboardButton("🤝 Сотрудничество"))
+main_keyboard.add(KeyboardButton("⭐ Оставить отзыв"), KeyboardButton("📲 Соцсети"))
+
+# Inline-кнопки
+site_button = InlineKeyboardMarkup().add(InlineKeyboardButton("🌍 Перейти на сайт", url="https://tihogallery.ru"))
+review_button = InlineKeyboardMarkup().add(InlineKeyboardButton("⭐ Оставить отзыв", url="https://yandex.ru/maps/org/galereya_tikho/176880862431/reviews/?ll=37.643893%2C55.766800&tab=reviews&z=16.9"))
+social_button = InlineKeyboardMarkup().add(InlineKeyboardButton("📸 Instagram", url="https://instagram.com/gallery"))
+
+@dp.message_handler(commands=['start'])
+async def start(message: types.Message):
+    await message.answer("Добро пожаловать в арт-галерею Тихо! Выберите действие:", reply_markup=main_keyboard)
+
+@dp.message_handler(lambda message: message.text == "🎨 Перейти на сайт")
+async def go_to_site(message: types.Message):
+    await message.answer("Наш сайт:", reply_markup=site_button)
+
+@dp.message_handler(lambda message: message.text == "📅 Бронирование")
+async def booking(message: types.Message):
+    text = "Вы можете забронировать галерею. Цены:\n- 1 час — 5000₽\n- 3 часа — 12000₽\n\nДля бронирования пишите @fucking_paradox"
+    await message.answer(text)
+
+@dp.message_handler(lambda message: message.text == "🤝 Сотрудничество")
+async def offer_collaboration(message: types.Message):
+    await message.answer("Отправьте фото ваших работ, и мы их рассмотрим.")
+
+@dp.message_handler(content_types=['photo'])
+async def handle_photos(message: types.Message):
+    await bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
+    await message.answer("Ваши работы отправлены на рассмотрение.")
+
+@dp.callback_query_handler(lambda c: c.data in ["accept", "decline"])
+async def admin_reply(callback_query: types.CallbackQuery):
+    user_id = callback_query.message.reply_to_message.forward_from.id
+    if callback_query.data == "accept":
+        await bot.send_message(user_id, "✅ Ваша заявка одобрена! Мы с вами свяжемся.")
+    else:
+        await bot.send_message(user_id, "❌ К сожалению, ваша заявка отклонена.")
+    await callback_query.answer()
+
+@dp.message_handler(lambda message: message.text == "⭐ Оставить отзыв")
+async def leave_review(message: types.Message):
+    await message.answer("Оставьте отзыв на Яндекс.Картах:", reply_markup=review_button)
+
+@dp.message_handler(lambda message: message.text == "📲 Соцсети")
+async def social_links(message: types.Message):
+    await message.answer("Подписывайтесь на нас:", reply_markup=social_button)
+
+executor.start_polling(dp)
