@@ -1,7 +1,4 @@
 tihogallery.py
-TOKEN = "Т8158525377:AAGDiBQp3CoPUl4Bp0_CNlkITibmdpDbp5k"
-ADMIN_ID = 246211279  # Telegram ID администратора галереи
-
 import asyncio
 import gspread
 from aiogram import Bot, Dispatcher, types
