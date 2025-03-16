@@ -1,62 +1,100 @@
-tihogallery.py
+TOKEN = "Т8158525377:AAGDiBQp3CoPUl4Bp0_CNlkITibmdpDbp5k"
+ADMIN_ID = 246211279  # Telegram ID администратора галереи
+
+import asyncio
+import gspread
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
-from aiogram.utils import executor
+from aiogram.filters import Command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
+from oauth2client.service_account import ServiceAccountCredentials
 
 TOKEN = "Т8158525377:AAGDiBQp3CoPUl4Bp0_CNlkITibmdpDbp5k"
 ADMIN_ID = 246211279  # Telegram ID администратора галереи
 
+# Подключение к Google Sheets
+SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+CREDS = ServiceAccountCredentials.from_json_keyfile_name("google_credentials.json", SCOPE)
+gs_client = gspread.authorize(CREDS)
+SHEET = gs_client.open("Gallery_Requests").sheet1  # Название таблицы в Google Sheets
+
 bot = Bot(token=TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()
 
 # Главное меню (Reply-кнопки)
-main_keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-main_keyboard.add(KeyboardButton("🎨 Перейти на сайт"))
-main_keyboard.add(KeyboardButton("📅 Бронирование"), KeyboardButton("🤝 Сотрудничество"))
-main_keyboard.add(KeyboardButton("⭐ Оставить отзыв"), KeyboardButton("📲 Соцсети"))
+main_keyboard = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="🛍 Купить работу")],
+        [KeyboardButton(text="🎨 Сотрудничество")],
+        [KeyboardButton(text="📅 Афиша мероприятий")],
+        [KeyboardButton(text="📲 Соцсети")]
+    ], resize_keyboard=True
+)
 
-# Inline-кнопки
-site_button = InlineKeyboardMarkup().add(InlineKeyboardButton("🌍 Перейти на сайт", url="https://tihogallery.ru"))
-review_button = InlineKeyboardMarkup().add(InlineKeyboardButton("⭐ Оставить отзыв", url="https://yandex.ru/maps/org/galereya_tikho/176880862431/reviews/?ll=37.643893%2C55.766800&tab=reviews&z=16.9"))
-social_button = InlineKeyboardMarkup().add(InlineKeyboardButton("📸 Instagram", url="https://instagram.com/gallery"))
-
-@dp.message_handler(commands=['start'])
+# Обработчик команды /start
+@dp.message(Command('start'))
 async def start(message: types.Message):
     await message.answer("Добро пожаловать в арт-галерею Тихо! Выберите действие:", reply_markup=main_keyboard)
 
-@dp.message_handler(lambda message: message.text == "🎨 Перейти на сайт")
-async def go_to_site(message: types.Message):
-    await message.answer("Наш сайт:", reply_markup=site_button)
+# Обработчик покупки работы
+@dp.message(lambda message: message.text == "🛍 Купить работу")
+async def buy_artwork(message: types.Message):
+    await message.answer("Пожалуйста, укажите ссылку на работу, которая вас интересует.")
 
-@dp.message_handler(lambda message: message.text == "📅 Бронирование")
-async def booking(message: types.Message):
-    text = "Вы можете забронировать галерею. Цены:\n- 1 час — 5000₽\n- 3 часа — 12000₽\n\nДля бронирования пишите @fucking_paradox"
-    await message.answer(text)
+@dp.message(lambda message: message.text.startswith("http"))
+async def process_artwork_link(message: types.Message):
+    text = f"🔔 Покупка работы\n👤 Клиент: {message.from_user.full_name}\n🔗 Ссылка: {message.text}"
+    await bot.send_message(ADMIN_ID, text)
+    await message.answer("Спасибо! Мы свяжемся с вами для уточнения деталей.")
+    SHEET.append_row([message.from_user.full_name, message.text, "Покупка работы"])
 
-@dp.message_handler(lambda message: message.text == "🤝 Сотрудничество")
-async def offer_collaboration(message: types.Message):
-    await message.answer("Отправьте фото ваших работ, и мы их рассмотрим.")
+# Обработчик сотрудничества
+@dp.message(lambda message: message.text == "🎨 Сотрудничество")
+async def collaboration(message: types.Message):
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Я художник", callback_data="collab_artist")],
+            [InlineKeyboardButton(text="Я дизайнер", callback_data="collab_designer")],
+            [InlineKeyboardButton(text="Аренда зала", callback_data="collab_rent")],
+            [InlineKeyboardButton(text="Другое", callback_data="collab_other")]
+        ]
+    )
+    await message.answer("Выберите вашу сферу деятельности:", reply_markup=keyboard)
 
-@dp.message_handler(content_types=['photo'])
-async def handle_photos(message: types.Message):
-    await bot.forward_message(ADMIN_ID, message.chat.id, message.message_id)
-    await message.answer("Ваши работы отправлены на рассмотрение.")
+@dp.callback_query(lambda c: c.data.startswith("collab_"))
+async def process_collaboration(callback_query: types.CallbackQuery):
+    user_type = callback_query.data.split("_")[1]
+    await bot.send_message(ADMIN_ID, f"👤 Клиент: {callback_query.from_user.full_name}\nСфера: {user_type}")
+    SHEET.append_row([callback_query.from_user.full_name, user_type, "Сотрудничество"])
+    await callback_query.message.answer("Спасибо! Мы свяжемся с вами.")
 
-@dp.callback_query_handler(lambda c: c.data in ["accept", "decline"])
-async def admin_reply(callback_query: types.CallbackQuery):
-    user_id = callback_query.message.reply_to_message.forward_from.id
-    if callback_query.data == "accept":
-        await bot.send_message(user_id, "✅ Ваша заявка одобрена! Мы с вами свяжемся.")
-    else:
-        await bot.send_message(user_id, "❌ К сожалению, ваша заявка отклонена.")
-    await callback_query.answer()
+# Обработчик загрузки портфолио
+@dp.message(lambda message: message.document and message.document.mime_type in ["application/pdf", "image/png"])
+async def handle_portfolio(message: types.Message):
+    file_info = await bot.get_file(message.document.file_id)
+    text = f"📂 Портфолио от {message.from_user.full_name}\nФайл: {message.document.file_name}"
+    await bot.send_message(ADMIN_ID, text)
+    await bot.send_document(ADMIN_ID, message.document.file_id)
+    SHEET.append_row([message.from_user.full_name, message.document.file_name, "Портфолио"])
+    await message.answer("Ваше портфолио отправлено на рассмотрение.")
 
-@dp.message_handler(lambda message: message.text == "⭐ Оставить отзыв")
-async def leave_review(message: types.Message):
-    await message.answer("Оставьте отзыв на Яндекс.Картах:", reply_markup=review_button)
+# Обработчик афиши мероприятий
+@dp.message(lambda message: message.text == "📅 Афиша мероприятий")
+async def events(message: types.Message):
+    await message.answer("Текущие мероприятия:\n1️⃣ Выставка 'Современное искусство'\n📅 Дата: 10 июня\n🔗 Билеты: https://example.com")
 
-@dp.message_handler(lambda message: message.text == "📲 Соцсети")
+# Обработчик соцсетей
+@dp.message(lambda message: message.text == "📲 Соцсети")
 async def social_links(message: types.Message):
-    await message.answer("Подписывайтесь на нас:", reply_markup=social_button)
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📸 Instagram", url="https://instagram.com/gallery")],
+            [InlineKeyboardButton(text="📣 Telegram-канал", url="https://t.me/gallery_channel")]
+        ]
+    )
+    await message.answer("Наши соцсети:", reply_markup=keyboard)
 
-executor.start_polling(dp)
+async def main():
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
