@@ -1,4 +1,1 @@
 pip install -r requirements.txt
-aiogram
-gspread
-oauth2client
